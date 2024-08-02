@@ -59,7 +59,7 @@ def loss_function(X, y, W): # 手工定义一个均方误差函数，此时W是�
 # 梯度下降函数
 def gradient_descent(X, y, W, lr, iter): # 定义梯度下降函数
     l_history = np.zeros(iter) # 初始化记录梯度下降中损失的数组
-    W_history = np.zeros(iter) # 初始化记录梯度下降过程中权重的数组
+    W_history = np.zeros((iter, len(W))) # 初始化记录梯度下降过程中权重的数组
     for i in range(iter): # 进行梯度下降的迭代，就是下多少级台阶
         y_hat = X.dot(W) # 这是向量化运算实现的假函数
         loss = y_hat.reshape((len(y_hat), 1)) - y # 中间过程，求出y_hat和y真值的差值
@@ -79,5 +79,21 @@ def linear_regression(X, y, weight, alpha, iter):
     print("线性回归训练准确率:  {:.2f}%".format(traning_acc)) # 输出准确率
     return loss_history, weight_history # 返回训练历史记录
 
-# 初始化权重
-#
+# 初始化参数
+iteration = 300 # 迭代300次
+alpha = 0.15 # 设置学习速率
+weight = np.array([0.5, 1, 1, 1]) # 权重向量, w[0] = bias
+
+# 计算一下初始值的损失
+print('当前损失: ', loss_function(X_train, y_train, weight))
+
+# 调用线性回归模型
+loss_history, weight_history = linear_regression(X_train, y_train,
+                                                 weight, alpha, iteration) # 训练机器
+
+# 输出结果
+print("训练最终损失: ", loss_history[-1])
+print("训练最终权重: ", weight_history[-1])
+
+
+

@@ -117,3 +117,56 @@ print('当w=5, b=3 在数据集X的损失值（均方误差）: ',
 print('当w=100, b=1 在数据集X的损失值（均方误差）: ',
       loss_function(X_train, y_train, 10, 3))
 
+
+# 3.5.1 权重和偏置的初始值
+# 首先确定参数的初始值
+iterations = 100 # 训练次数
+alpha = 1 # 学习率
+weight = -5 # 权重
+bias = 3 # 偏置
+
+# 计算一下初始权重和偏置所带来的损失
+print('当前损失: ', loss_function(X_train, y_train, weight, bias))
+
+# 画出当前回归函数的模型
+plt.plot(X_train, y_train, 'r.', label='Training data')  # 显示训练数据
+
+line_X = np.linspace(np.min(X_train), np.max(X_train), 500)
+
+line_y = [weight*x + bias for x in line_X]
+
+plt.plot(line_X, line_y, 'b--', label='Current hypothesis')
+
+plt.xlabel('wechat')
+plt.ylabel('sales')
+plt.legend()
+plt.show()
+
+
+# 梯度下降公式
+def gradient_descent(X, y, weight, bias, lr, iter):
+    l_history = np.zeros(iter) # 记录迭代过程中的损失值
+    w_history = np.zeros(iter) # 记录迭代过程中的权重值
+    b_history = np.zeros(iter) # 记录迭代过程中的偏置值
+    for i in range(iter):
+        y_hat = weight*X + bias
+        loss = y - y_hat
+        d_w = ((loss.T).dot(X))/len(X)
+        d_b = np.sum(loss)*1/len(X)
+        l_history[i] = loss_function(X, y, weight, bias)
+        w_history[i] = weight
+        b_history[i] = bias
+        weight = weight - lr*d_w
+        bias = bias - lr*d_b
+    return l_history, w_history, b_history
+
+# 根据初始参数值，进行梯度下降，也就是开始训练机器，拟合函数
+l_history, w_history, b_history = gradient_descent(X_train, y_train,
+                                                   weight=5, bias=3, lr=0.01, iter=100)
+
+# 画出损失函数
+plt.plot(l_history, 'g--', label='Loss Curve')
+plt.xlabel('Iteration')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()

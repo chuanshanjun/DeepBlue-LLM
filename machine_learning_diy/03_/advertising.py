@@ -104,8 +104,8 @@ plt.show()
 
 # 损失函数 - 此处使用的均方误差函数
 def loss_function(X, y, w, b): # 手工定义一个损失函数
-    y_hat = X*w + b
-    loss = y - y_hat
+    y_hat = w*X + b
+    loss = y_hat - y
     cost = np.sum(loss**2)/(2*len(X))
     return cost
 
@@ -115,7 +115,7 @@ print('当w=5, b=3 在数据集X的损失值（均方误差）: ',
 
 # 测试 当w=100, b=1 在数据集X的损失值（均方误差） 是多少？
 print('当w=100, b=1 在数据集X的损失值（均方误差）: ',
-      loss_function(X_train, y_train, 10, 3))
+      loss_function(X_train, y_train, 100, 1))
 
 
 # 3.5.1 权重和偏置的初始值
@@ -150,7 +150,7 @@ def gradient_descent(X, y, weight, bias, lr, iter):
     b_history = np.zeros(iter) # 记录迭代过程中的偏置值
     for i in range(iter):
         y_hat = weight*X + bias
-        loss = y - y_hat
+        loss = y_hat - y
         d_w = ((loss.T).dot(X))/len(X)
         d_b = np.sum(loss)*1/len(X)
         l_history[i] = loss_function(X, y, weight, bias)
@@ -162,10 +162,42 @@ def gradient_descent(X, y, weight, bias, lr, iter):
 
 # 根据初始参数值，进行梯度下降，也就是开始训练机器，拟合函数
 l_history, w_history, b_history = gradient_descent(X_train, y_train,
-                                                   weight=5, bias=3, lr=0.01, iter=100)
+                                                   weight=-5, bias=3, lr=0.5, iter=200)
+
+print('当前损失: ', l_history[-1])
+print('当前权重: ', w_history[-1])
+print('当前偏置: ', b_history[-1])
 
 # 画出损失函数
 plt.plot(l_history, 'g--', label='Loss Curve')
+plt.xlabel('Iteration')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+# 绘制当前图形
+# 绘画出 数据集
+# 绘画出函数
+plt.plot(X_train, y_train, 'r.', label='Training data')
+X_line = np.linspace(np.min(X_train), np.max(X_train), 500)
+y_line = [w_history[-1]*x + b_history[-1] for x in X_line]
+plt.plot(X_line, y_line, 'b--', label='Current hypothesis')
+plt.xlabel('wechat')
+plt.ylabel('sales')
+plt.legend()
+plt.show()
+
+
+# 3.5.5 在测试集上测试
+# 测试集损失
+print('测试集损失: ', loss_function(X_test, y_test, w_history[-1], b_history[-1]))
+
+l_history, w_history, b_history = gradient_descent(X_test, y_test,
+                                                   weight=-5, bias=3, lr=0.5, iter=200)
+
+# 画出在训练集及测试集上的损失函数
+plt.plot(l_history, 'g--', label='Train Loss Curve')
+plt.plot()
 plt.xlabel('Iteration')
 plt.ylabel('Loss')
 plt.legend()

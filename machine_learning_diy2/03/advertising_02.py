@@ -11,9 +11,9 @@ print(df_ads.head())
 X = np.array(df_ads.drop('sales', axis=1))
 y = np.array(df_ads['sales'])
 
-print ("张量X的阶:", X.ndim)
-print ("张量X的维度:", X.shape)
-print (X)
+print("张量X的阶:", X.ndim)
+print("张量X的维度:", X.shape)
+print(X)
 
 y = y.reshape(len(y), 1)
 

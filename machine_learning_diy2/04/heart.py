@@ -119,3 +119,10 @@ iterations = 500 # 迭代次数
 
 # 用逻辑回归函数训练机器
 loss_history, weight_history, bias_history = logistic_regression(X_train, y_train, weight,bias, alpha, iterations)
+
+# 上面的只是在训练集上的预测，下面使用测试数据进行，模型泛化能力的验证
+y_pred = predict(X_test, weight_history[-1], bias_history[-1])
+traning_acc = 100 - np.mean(np.abs(y_pred - y_test))*100
+print(" 测 试 集 上 的 逻 辑 回 归 训 练 准 确 率 :{:.2f}%".format(traning_acc)) # 输出准确率
+
+print (" 测 试 集 上 逻 辑 回 归 预 测 分 类 值 :", predict(X_test,weight_history[-1], bias_history[-1]))

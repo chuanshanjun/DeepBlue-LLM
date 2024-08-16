@@ -1,8 +1,11 @@
+from sys import prefix
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import LogisticRegression
 
 
 # 1.数据读取
@@ -126,3 +129,28 @@ traning_acc = 100 - np.mean(np.abs(y_pred - y_test))*100
 print(" 测 试 集 上 的 逻 辑 回 归 训 练 准 确 率 :{:.2f}%".format(traning_acc)) # 输出准确率
 
 print (" 测 试 集 上 逻 辑 回 归 预 测 分 类 值 :", predict(X_test,weight_history[-1], bias_history[-1]))
+
+
+loss_history_test = np.zeros(iterations) # 初始化历史损失(测试数据集)
+for i in range(iterations):  #求训练过程中不同参数带来的测试集损失
+    loss_history_test[i] = loss_function(X_test, y_test, weight_history[i], bias_history[i])
+
+index = np.arange(0, iterations, 1)
+plt.plot(index, loss_history, c='blue', linestyle='solid')
+plt.plot(index, loss_history_test, c='red', linestyle='dashed')
+plt.legend(['Training Loss', 'Test loss'])
+plt.xlabel('Number of Iteration')
+plt.ylabel('Cost')
+plt.show()
+
+# 直接调用Sklearn库实现逻辑回归
+lr = LogisticRegression() # lr, 就代表是逻辑回归模型
+lr.fit(X_train, y_train) # fit, 就相当于是梯度下降
+print("SK learn 逻 辑 回 归 测 试 准 确 率{:.2f}%".format(lr.score(X_test, y_test)*100))
+
+# 把3个文本型变量转换为哑变量 cp,thall,slp
+a = pd.get_dummies(df_heart['cp'], prefix='cp')
+b = pd.get_dummies(df_heart['thall'], prefix='thal')
+c = pd.get_dummies(df_heart['slp'], prefix='slp')
+
+# 把哑变量添加进dataframe

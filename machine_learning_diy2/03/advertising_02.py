@@ -56,7 +56,7 @@ def gradient_descent(X, y, weight, lr, iter):
     for i in range(iter):
         y_hat = np.dot(X, weight.reshape(-1, 1))
         loss = y_hat - y # 此时 loss 形状(140,1), X 形状(140,4)
-        d_w = np.sum(np.dot(loss.T, X))/len(X)
+        d_w = np.dot(loss.T, X)/len(X)
         weight = weight - lr*d_w
 
         l_history[i] = loss_function(X,y,weight)

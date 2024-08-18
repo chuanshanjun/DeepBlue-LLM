@@ -83,4 +83,8 @@ for i in C_param_range:
     plt.title('C=%s'%i)
     plt.show()
 
-
+# 选择C值为10重做逻辑回归
+lr = LogisticRegression(penalty='l2', C=10) # 设定L2正则化和C参数
+lr.fit(X_train_sepal, y_train_sepal)
+score = lr.score(X_test_sepal, y_test_sepal) # 验证集分数评估
+print("SKlearn 逻 辑 回 归 测 试 准 确 率{:.2f}%".format(score*100))

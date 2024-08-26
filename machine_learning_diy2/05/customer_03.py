@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler
 
 def show_history(history):  # 显示训练过程中的学习曲线
     loss = history.history['loss']
@@ -32,6 +31,7 @@ def show_history(history):  # 显示训练过程中的学习曲线
     plt.legend()
     plt.show()
 
+
 df_bank = pd.read_csv('./data/BankCustomer.csv')
 
 df_bank['Gender'].replace('Female', 0, inplace=True)
@@ -46,6 +46,13 @@ y = df_bank['Exited']
 X = df_bank.drop(['Exited', 'Name', 'City'], axis=1)
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+mean = X_train.mean(axis=0) # 计算训练集均值
+X_train -= mean  # 训练集减去训练集均值
+std = X_train.std(axis=0) # 计算训练集标准差
+X_train /= std # 训练集除以训练集标准差
+X_test -= mean # 测试集减去训练集均值
+X_test /= std # 测试集除以训练集标准差
 
 ann = Sequential() # 创建一个序贯ANN模型
 ann.add(Dense(units=12, input_dim=12, activation='relu')) # 添加一个输入层
@@ -65,6 +72,7 @@ history = ann.fit(X_train, y_train,
 
 show_history(history)
 
+
 y_pred = ann.predict(X_test, batch_size=10) # 预测测试集的标签
 
 y_pred = np.round(y_pred) # 四舍五入，将分类值转换为0,1
@@ -81,23 +89,3 @@ plt.title("ANN Confusion Matrix")
 sns.heatmap(cm, annot=True, cmap="Blues", fmt='d', cbar=False)
 
 plt.show()
-
-mean = X_train.mean(axis=0) # 计算训练集均值
-X_train -= mean  # 训练集减去训练集均值
-std = X_train.std(axis=0) # 计算训练集标准差
-X_train /= std # 训练集除以训练集标准差
-X_test -= mean # 测试集减去训练集均值
-X_test /= std # 测试集除以训练集标准差
-
-# 也可直接使用公式
-# sc = StandardScaler() # 特征缩放器
-# X_train = sc.fit_transform(X_train) # 拟合并应用于训练集
-# X_test = sc.transform(X_test) # 训练集结果应用于测试集
-
-# 数据缩放后重新训练
-history = ann.fit(X_train, y_train,
-        epochs=30,
-        batch_size=64,
-        validation_data=(X_test, y_test)) # 训练神经网络
-
-show_history(history)

@@ -1,10 +1,12 @@
 import numpy as np # 导入Numpy
 import os # 导入os工具
 import cv2
+
 from sklearn.preprocessing import LabelEncoder # 导入标签编码工具
 from keras.src.utils import to_categorical # 导入one-hot 编码
 from keras.src.models import Sequential # 导入神经网络模型
 from keras.src.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D # 导入全连接层和Dropout层
+from keras.src.optimizers import Adam # 导入优化器
 import matplotlib.pyplot as plt
 import random as rdm
 from sklearn.model_selection import train_test_split
@@ -109,18 +111,21 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 cnn = Sequential()
 cnn.add(Conv2D(32, (3,3,), activation='relu', input_shape=(150, 150, 3)))
+cnn.add(Dropout(0.5))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Conv2D(64, (3,3,), activation='relu'))
+cnn.add(Dropout(0.5))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Conv2D(128, (3,3), activation='relu'))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Conv2D(128, (3,3), activation='relu'))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Flatten())
+cnn.add(Dropout(0.5))
 cnn.add(Dense(512, activation='relu'))
 cnn.add(Dense(10, activation='sigmoid'))
 
-cnn.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
+cnn.compile(optimizer=Adam(learning_rate=1e-4), loss='categorical_crossentropy', metrics=['acc'])
 
 history = cnn.fit(X_train, y_train, epochs=50, batch_size=256, validation_data=(X_test, y_test))
 

@@ -1,37 +1,13 @@
-import numpy as np # 导入Numpy
-import os # 导入os工具
+import os
 import cv2
+import numpy as np # 导入Numpy
 from sklearn.preprocessing import LabelEncoder # 导入标签编码工具
 from keras.src.utils import to_categorical # 导入one-hot 编码
-from keras.src.models import Sequential # 导入神经网络模型
-from keras.src.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D # 导入全连接层和Dropout层
-import matplotlib.pyplot as plt
+import keras.src.models
 import random as rdm
 from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 
-
-def show_history(history):  # 显示训练过程中的学习曲线
-    loss = history.history['loss']
-    val_loss = history.history['val_loss']
-    epochs = range(1, len(loss) + 1)
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, loss, 'bo', label='Training loss')
-    plt.plot(epochs, val_loss, 'b', label='Validation loss')
-    plt.title('Training and validation loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    acc = history.history['acc']
-    val_acc = history.history['val_acc']
-    plt.subplot(1, 2, 2, )
-    plt.plot(epochs, acc, 'bo', label='Training acc')
-    plt.plot(epochs, val_acc, 'b', label='Validation acc')
-    plt.title('Training and validation accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.show()
 
 
 # 获取目录
@@ -107,21 +83,15 @@ plt.tight_layout()
 # 拆分数据集
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
-cnn = Sequential()
-cnn.add(Conv2D(32, (3,3,), activation='relu', input_shape=(150, 150, 3)))
-cnn.add(MaxPooling2D((2,2)))
-cnn.add(Conv2D(64, (3,3,), activation='relu'))
-cnn.add(MaxPooling2D((2,2)))
-cnn.add(Conv2D(128, (3,3), activation='relu'))
-cnn.add(MaxPooling2D((2,2)))
-cnn.add(Conv2D(128, (3,3), activation='relu'))
-cnn.add(MaxPooling2D((2,2)))
-cnn.add(Flatten())
-cnn.add(Dense(512, activation='relu'))
-cnn.add(Dense(10, activation='sigmoid'))
 
-cnn.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
+model = keras.models.load_model('./data/models/doggy_04.h5')
 
-history = cnn.fit(X_train, y_train, epochs=50, batch_size=256, validation_data=(X_test, y_test))
-
-show_history(history)
+# 绘制特征通道
+layer_outputs = [layer.output for layer in model.layers[:16]]
+image = X_train[0]
+image = image.reshape(1, 150, 150, 3)
+activation_model = keras.models.Model(inputs=model.input, outputs=layer_outputs)
+activations = activation_model.predict(image)
+first_layer = activations[0]
+plt.matshow(first_layer[0, :, :, 2], cmap='viridis')
+plt.matshow(first_layer[0, :, :, 3], cmap='viridis')

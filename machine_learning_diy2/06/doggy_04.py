@@ -1,10 +1,14 @@
 import numpy as np # 导入Numpy
 import os # 导入os工具
 import cv2
+
 from sklearn.preprocessing import LabelEncoder # 导入标签编码工具
 from keras.src.utils import to_categorical # 导入one-hot 编码
 from keras.src.models import Sequential # 导入神经网络模型
 from keras.src.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D # 导入全连接层和Dropout层
+from keras.src.optimizers import Adam # 导入优化器
+from keras.src.legacy.preprocessing.image import ImageDataGenerator
+import keras.src.models
 import matplotlib.pyplot as plt
 import random as rdm
 from sklearn.model_selection import train_test_split
@@ -33,6 +37,20 @@ def show_history(history):  # 显示训练过程中的学习曲线
     plt.legend()
     plt.show()
 
+# 定义一个数据增强器，并设定各种增强选项
+augs_gen = ImageDataGenerator(
+    featurewise_center=False, # 对数据集进行中心化
+    samplewise_center=False, # 对每个样本进行中心化
+    featurewise_std_normalization=False, # 对数据集进行标准化
+    samplewise_std_normalization=False, # 对每个样本进行标准化
+    zca_whitening=False, # 对数据集进行ZCA白化
+    rotation_range=10, # 随机旋转图像的角度
+    zoom_range=0.1, # 随机缩放图像的尺寸
+    width_shift_range=0.1, # 随机水平平移图像
+    height_shift_range=0.1, # 随机垂直平移图像
+    horizontal_flip=True, # 随机水平翻转图像
+    vertical_flip=False # 随机垂直翻转图像
+)
 
 # 获取目录
 print(os.listdir('./data/images'))
@@ -109,19 +127,51 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 cnn = Sequential()
 cnn.add(Conv2D(32, (3,3,), activation='relu', input_shape=(150, 150, 3)))
+cnn.add(Dropout(0.5))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Conv2D(64, (3,3,), activation='relu'))
+cnn.add(Dropout(0.5))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Conv2D(128, (3,3), activation='relu'))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Conv2D(128, (3,3), activation='relu'))
 cnn.add(MaxPooling2D((2,2)))
 cnn.add(Flatten())
+cnn.add(Dropout(0.5))
 cnn.add(Dense(512, activation='relu'))
 cnn.add(Dense(10, activation='sigmoid'))
 
-cnn.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
+cnn.compile(optimizer=Adam(learning_rate=1e-4), loss='categorical_crossentropy', metrics=['acc'])
 
-history = cnn.fit(X_train, y_train, epochs=50, batch_size=256, validation_data=(X_test, y_test))
+augs_gen.fit(X_train) # 针对训练集拟合数据增强器
+
+history = cnn.fit(
+    augs_gen.flow(X_train, y_train, batch_size=16),  # 增强后的训练集
+    validation_data=(X_test, y_test), # 指定验证集
+    validation_steps=100, # 指定验证步长
+    steps_per_epoch=100, # 指定每轮步长
+    epochs=10, # 指定轮次
+    verbose=1) # 指定是否显示训练过程中的信息
 
 show_history(history)
+
+# 将训练好的权重等所有参数保存到一个文件中
+cnn.save('./data/models/doggy_04.h5')
+
+# 重新载入已经保存的模型
+model = keras.models.load_model('./data/models/doggy_04.h5')
+
+# 假设输入数据的形状是 (150, 150, 3)
+dummy_input = np.random.random((1, 150, 150, 3))  # 生成一个批次大小为1的随机输入
+
+# 调用模型一次
+model.predict(dummy_input)
+
+layer_outputs = [layer.output for layer in model.layers[:16]]
+image = X_train[0]
+image = image.reshape(1, 150, 150, 3)
+activation_model = keras.models.Model(inputs=model.input, outputs=layer_outputs)
+activations = activation_model.predict(image)
+first_layer = activations[0]
+plt.matshow(first_layer[0, :, :, 2], cmap='viridis')
+plt.matshow(first_layer[0, :, :, 3], cmap='viridis')

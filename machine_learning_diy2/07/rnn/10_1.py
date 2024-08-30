@@ -53,7 +53,7 @@ raw_data /= std
 # 问题描述： 每小时采样一次数据，给定前5天的数据，我们能否预测24小时之后的温度？
 # 理解timeseries_dataset_from_array()
 import numpy as np
-import keras
+from tensorflow import keras
 
 int_sequence = np.arange(10)
 dummy_dataset = keras.utils.timeseries_dataset_from_array(
@@ -131,26 +131,207 @@ print(f"Validation MAE: {evaluate_native_method(val_dataset):.2f}")
 print(f"Test MAE: {evaluate_native_method(test_dataset):.2f}")
 
 # 10-10 训练并评估一个密集连接模型
-from keras import layers
-inputs = keras.Input(shape=(sequence_length, raw_data.shape[-1]))
-x = layers.Flatten()(inputs)
-x = layers.Dense(16, activation='relu')(x)
+from tensorflow.keras import layers
+# inputs = keras.Input(shape=(sequence_length, raw_data.shape[-1]))
+# x = layers.Flatten()(inputs)
+# x = layers.Dense(16, activation='relu')(x)
+# outputs = layers.Dense(1)(x)
+# model = keras.Model(inputs, outputs)
+#
+# callbacks = [
+#     keras.callbacks.ModelCheckpoint('jena_dense.keras', save_best_only=True)
+# ]
+# model.compile(optimizer='rmsprop', loss='mse', metrics=['mae'])
+# history = model.fit(train_dataset,
+#                     epochs=10,
+#                     validation_data=val_dataset,
+#                     callbacks=callbacks)
+#
+# model = keras.models.load_model('jena_dense.keras')
+# print(f"Test MAE: {model.evaluate(test_dataset)[1]:.2f}")
+
+# 10-11 绘制结果
+# import matplotlib.pyplot as plt
+# loss = history.history['mae']
+# val_loss = history.history['val_mae']
+# epochs = range(1, len(loss) + 1)
+# plt.figure()
+# plt.plot(epochs, loss, 'bo', label='Training MAE')
+# plt.plot(epochs, val_loss, 'b', label='Validation MAE')
+# plt.title('Training and validation MAE')
+# plt.legend()
+# plt.show()
+
+
+# 10-12 基于LSTM的简单模型
+# inputs = keras.Input(shape=(sequence_length, raw_data.shape[-1]))
+# x = layers.LSTM(16)(inputs)
+# outputs = layers.Dense(1)(x)
+# model = keras.Model(inputs, outputs)
+#
+# callbacks = [
+#     keras.callbacks.ModelCheckpoint('jena_dense_lstm.keras', save_best_only=True)
+# ]
+#
+# model.compile(optimizer='rmsprop', loss='mse', metrics=['mae'])
+# history = model.fit(train_dataset, epochs=10, validation_data=val_dataset, callbacks=callbacks)
+#
+# print(f"Test MAE: {model.evaluate(test_dataset)[1]:.2f}")
+#
+# import matplotlib.pyplot as plt
+# loss = history.history['mae']
+# val_loss = history.history['val_mae']
+# epochs = range(1, len(loss) + 1)
+# plt.figure()
+# plt.plot(epochs, loss, 'bo', label='Training MAE')
+# plt.plot(epochs, val_loss, 'b', label='Validation MAE')
+# plt.title('Training and validation MAE')
+# plt.legend()
+# plt.show()
+
+# 10-13 RNN 伪代码
+# state_t = 0 # t的状态
+# for input_t in input_sequence:
+#     output_t = f(input, state_t)
+#     state_t = output_t
+
+# 10-14 更详细的RNN伪代码
+# state_t = 0
+# for input_t in input_sequence:
+#     output_t = actiation(dot(W, input) + dot(U, state_t), b)
+#     state_t = output_t
+
+# 10-15 简单RNN的NumPy实现
+# timesteps = 100
+# input_features = 32
+# output_features = 64
+# inputs = np.random.random((timesteps, input_features))
+# state_t = np.zeros((output_features),)
+# W = np.random.random((output_features, input_features))
+# U = np.random.random((output_features, output_features))
+# b = np.random.random((output_features),)
+# successive_outputs = []
+# for input_t in inputs:
+#     output_t = np.tanh(np.dot(W, input_t) + np.dot(U, state_t) + b)
+#     successive_outputs.append(output_t)
+#     state_t = output_t
+# final_output_sequence = np.stack(successive_outputs, axis=0)
+
+# 10-16 能够处理任意长度序列的RNN
+# num_features = 14
+# inputs = keras.Input(shape=(None, num_features))
+# out = layers.SimpleRNN(16) (inputs)
+
+# 10-17 只返回最后一个时间步输出的RNN层
+# num_features = 14
+# steps = 120
+# inputs = keras.Input(shape=(steps, num_features))
+# outputs = layers.SimpleRNN(16, return_sequences=False)(inputs)
+# model = keras.Model(inputs, outputs)
+# model.summary()
+# print(outputs.shape)
+
+# 10-18 返回完整输出序列的RNN层
+# num_features = 14
+# steps = 120
+# inputs = keras.Input(shape=(steps, num_features))
+# outputs = layers.SimpleRNN(16, return_sequences=True)(inputs)
+# model = keras.Model(inputs, outputs)
+# model.summary()
+# print(outputs.shape)
+
+# 10-19 RNN层堆叠
+# inputs = keras.Input(shape=(steps, num_features))
+# x = layers.SimpleRNN(16, return_sequences=True)(inputs)
+# x = layers.SimpleRNN(16, return_sequences=True)(x)
+# outputs = layers.SimpleRNN(16)(x)
+# model = keras.Model(inputs, outputs)
+# model.summary()
+# print(outputs.shape)
+
+# 10-22 训练并评估一个使用dropout正则化的LSTM模型
+# inputs = keras.Input(shape=(sequence_length, raw_data.shape[-1]))
+# x = layers.LSTM(32, recurrent_dropout=0.25)(inputs)
+# x = layers.Dropout(0.5)(x) # 这里在LSTM层之后还添加一个Dropout层，对Dense层进行正则化
+# outputs = layers.Dense(1)(x)
+# model = keras.Model(inputs, outputs)
+# model.summary()
+#
+# callbacks = [
+#     keras.callbacks.ModelCheckpoint('jena_lstm_dropout.keras', save_best_only=True)
+# ]
+#
+# model.compile(optimizer='rmsprop', loss='mse', metrics=['mae'])
+# history = model.fit(train_dataset,
+#                     epochs=50,
+#                     validation_data=val_dataset,
+#                     callbacks=callbacks)
+#
+# print(f"Test MAE: {model.evaluate(test_dataset)[1]:.2f}")
+#
+# import matplotlib.pyplot as plt
+# loss = history.history['mae']
+# val_loss = history.history['val_mae']
+# epochs = range(1, len(loss) + 1)
+# plt.figure()
+# plt.plot(epochs, loss, 'bo', label='Training MAE')
+# plt.plot(epochs, val_loss, 'b', label='Validation MAE')
+# plt.title('Training and validation MAE')
+# plt.legend()
+# plt.show()
+
+# 10-23 训练并评估一个使用dropout 正则化的堆叠GRU模型
+inputs = keras.Input(shape=(sequence_length, raw_data[-1]))
+x = keras.GRU(32, recurrent_dropout=0.5, return_sequences=True)(inputs)
+x = layers.GRU(32, recurrent_dropout=0.5) (x)
+x = layers.Dropout(0.5)(x)
 outputs = layers.Dense(1)(x)
 model = keras.Model(inputs, outputs)
+model.summary()
 
 callbacks = [
-    keras.callbacks.ModelCheckpoint('jena_dense.keras', save_best_only=True)
+    keras.callbacks.ModelCheckpoint('jena_stacked_gru_dropout.keras', save_best_only=True)
 ]
+
 model.compile(optimizer='rmsprop', loss='mse', metrics=['mae'])
 history = model.fit(train_dataset,
-                    epochs=10,
+                    epochs=50,
+                    validation_data=val_dataset,
+                    callbacks=callbacks)
+model = keras.models.load_model('jena_stacked_gru_dropout.keras')
+print(f"Test MAE: {model.evaluate(test_dataset)[1]:.2f}")
+
+import matplotlib.pyplot as plt
+loss = history.history['mae']
+val_loss = history.history['val_mae']
+epochs = range(1, len(loss) + 1)
+plt.figure()
+plt.plot(epochs, loss, 'bo', label='Training MAE')
+plt.plot(epochs, val_loss, 'b', label='Validation MAE')
+plt.title('Training and validation MAE')
+plt.legend()
+plt.show()
+
+# 10-24 训练并评估双向LSTM
+inputs = keras.Input(shape=(sequence_length, raw_data[-1]))
+x = layers.Bidirectional(layers.LSTM(16))(inputs)
+outputs = layers.Dense(1)(x)
+model = keras.Model(inputs, outputs)
+model.summary()
+
+callbacks = [
+    keras.callbacks.ModelCheckpoint('jena_bidirectional_lstm.keras', save_best_only=True)
+]
+
+model.compile(optimizer='rmsprop', loss='mse', metrics=['mae'])
+history = model.fit(train_dataset,
+                    epochs=50,
                     validation_data=val_dataset,
                     callbacks=callbacks)
 
-model = keras.models.load_model('jena_dense.keras')
+model = keras.models.load_model('jena_bidirectional_lstm.keras')
 print(f"Test MAE: {model.evaluate(test_dataset)[1]:.2f}")
 
-# 10-11 绘制结果
 import matplotlib.pyplot as plt
 loss = history.history['mae']
 val_loss = history.history['val_mae']

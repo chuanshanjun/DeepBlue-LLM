@@ -2,7 +2,7 @@
 # 构建一个非常简单的数据集
 from tensorflow_estimator.python.estimator.util import parse_input_fn_result
 
-sentences = ["我 喜欢 玩具 ", "我 爱 爸爸 ", "我 讨厌 挨打"]
+sentences = ["我 喜欢 玩具 ", "我 爱 爸爸 ", "我 讨厌 挨打 ", "我 喜欢 妈妈"]
 # 将所有句子连接在一起，用空格分隔成多个词，再将重复的词去除，构建词汇表
 word_list = list(set("".join(sentences).split()))
 # 创建一个字典，将每个词映射到一个唯一的索引
@@ -20,7 +20,7 @@ print('词汇表大小: ', voc_size)
 # 构建批处理数据
 import torch
 import random
-batch_size = 2
+batch_size = 3
 def make_batch():
     input_batch = []
     target_batch = []

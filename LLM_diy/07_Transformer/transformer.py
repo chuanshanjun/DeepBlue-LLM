@@ -2,8 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from GPT_Model_with_Decode import d_embedding
-
 d_k = 64 # K(=Q)维度
 d_v = 64 # V 维度
 
@@ -90,7 +88,7 @@ class MultiHeadAttention(nn.Module):
         # -------------------------------------------
 
         # 使用缩放点积注意力计算上下文和注意力权重
-        context, weights = ScaledDotProductAttention(q_s, k_s, v_s, attn_mask)
+        context, weights = ScaledDotProductAttention()(q_s, k_s, v_s, attn_mask)
 
         # ------------------维度信息------------------
         # context [batch_size, n_headers, len_q, dim_v]
@@ -294,3 +292,268 @@ class Encoder(nn.Module):
         # -------------------------------------------
 
         return enc_outputs, enc_self_attn_weights # 返回编码器输出和编码器注意力权重
+
+# 生成后续注意力掩码的函数，用于在多头注意力计算中忽略未来信息
+def get_attn_subsequent_mask(seq):
+    # ------------------维度信息------------------
+    # seq 的维度: [batch_size, seq_len(Q), seq_len(K)] ，形状与多头自注意力中的注意力权重矩阵相匹配
+    # -------------------------------------------
+
+    # 获取输入序列的形状
+    attn_shape = [seq.size(0), seq.size(1), seq.size(1)]
+
+    # ------------------维度信息------------------
+    # attn_shape 是一个一维张量 [batch_size, seq_len(Q), seq_len(K)]
+    # -------------------------------------------
+
+    # 使用numpy创建一个上三角矩阵 (triu = triangle upper)
+    subsequent_mask = np.triu(np.ones(attn_shape), k=1)
+
+    # ------------------维度信息------------------
+    # subsequent_mask 的维度: [batch_size, seq_len(Q), seq_len(K)]
+    # -------------------------------------------
+
+    # 将numpy数组转换为PyTorch张量，并将数据类型设置为byte(布尔值)
+    subsequent_mask = torch.from_numpy(subsequent_mask).byte()
+
+    # ------------------维度信息------------------
+    # 返回的subsequent_mask 的维度： [batch_size, seq_len(Q), seq_len(K)]
+    # -------------------------------------------
+
+    return subsequent_mask # 返回后续位置的注意力掩码
+
+# 定义解码器层
+class DecoderLayer(nn.Module):
+    def __init__(self):
+        super(DecoderLayer, self).__init__()
+        self.dec_self_attn = MultiHeadAttention() # 多头自注意力层
+        self.dec_enc_attn = MultiHeadAttention() # 多头自注意力层，连接编码器和解码器
+        self.pos_ffn = PoswiseFeedForwardNet() # 逐位置前馈网络层
+
+    def forward(self, dec_inputs, enc_outputs, dec_self_attn_mask, dec_enc_attn_mask):
+        # ------------------维度信息------------------
+        # dec_inputs [batch_size, target_len, embedding_dim]
+        # enc_outputs [batch_size, source_len, embedding_dim]
+        # dec_self_attn_mask [batch_size, target_len, target_len]
+        # dec_enc_attn_mask [batch_size, target_len, source_len]
+        # -------------------------------------------
+
+        # 将相同的 Q K V 输入多头自注意力层
+        dec_outputs, dec_self_attn = self.dec_self_attn(dec_inputs, dec_inputs, dec_inputs, dec_self_attn_mask)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_self_attn_mask [batch_size, n_headers, target_len, target_len]
+        # -------------------------------------------
+
+        # 将解码器输出和编码器输出输入多头自注意力层
+        dec_outputs, dec_enc_attn = self.dec_enc_attn(dec_outputs, enc_outputs, enc_outputs, dec_enc_attn_mask)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_enc_attn_mask [batch_size, n_headers, target_len, source_len]
+        # -------------------------------------------
+
+        # 输入逐位置前馈网络层
+        dec_outputs = self.pos_ffn(dec_outputs)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_self_attn [batch_size, n_headers, target_len, target_len]
+        # dec_enc_attn [batch_size, n_headers, target_len, source_len]
+        # -------------------------------------------
+
+        # 返回解码器层输出，每层的自注意力和解码器-编码器注意力权重
+
+        return dec_outputs, dec_self_attn, dec_enc_attn
+
+# 定义解码器类
+n_layers = 6 # 设置Decoder 的层数
+class Decoder(nn.Module):
+    def __init__(self, corpus):
+        super(Decoder, self).__init__()
+        self.tgt_emb = nn.Embedding(len(corpus.tgt_vocab), d_embedding) # 词嵌入层
+        self.pos_emb = nn.Embedding.from_pretrained(get_sin_enc_table(corpus.tgt_len+1, d_embedding), freeze=True) # 位置嵌入层
+        self.layers = nn.ModuleList([DecoderLayer() for _ in range(n_layers)]) # 叠加多层
+
+    def forward(self, dec_inputs, enc_inputs, enc_outputs):
+        # ------------------维度信息------------------
+        # dec_inputs [batch_size, target_len]
+        # enc_inputs [batch_size, source_len]
+        # enc_outputs [batch_size, source_len, embedding_dim]
+        # -------------------------------------------
+
+        # 创建一个从1到source_len的位置索引序列
+        pos_indices = torch.arange(1, dec_inputs.size(1)+1).unsqueeze(0).to(dec_inputs)
+
+        # ------------------维度信息------------------
+        # pos_indices 的维度是 [1, target_len]
+        # -------------------------------------------
+
+        # 对输入进行词嵌入和位置嵌入相加
+        dec_outputs = self.tgt_emb(dec_inputs) + self.pos_emb(pos_indices)
+
+        # ------------------维度信息------------------
+        # dec_outputs 维度信息 [batch_size, target_len, embedding_dim]
+        # -------------------------------------------
+
+        # 生成解码器自注意力掩码和解码器-编码器注意力掩码
+        dec_self_attn_pad_mask = get_attn_pad_mask(dec_inputs, dec_inputs) # 填充掩码
+        dec_self_attn_subsequent_mask = get_attn_subsequent_mask(dec_inputs) # 后续掩码
+        dec_self_attn_mask = torch.gt((dec_self_attn_pad_mask + dec_self_attn_subsequent_mask), 0)
+        dec_enc_attn_mask = get_attn_pad_mask(dec_inputs, enc_inputs) # 解码器-编码器掩码
+
+        # ------------------维度信息------------------
+        # dec_self_attn_pad_mask [batch_size, target_len, target_len]
+        # dec_self_attn_subsequent_mask [batch_size, target_len, target_len]
+        # dec_self_attn_mask [batch_size, target_len, source_len]
+        # -------------------------------------------
+
+        dec_self_attns, dec_enc_attns = [], [] # 初始化 dec_self_attns, dec_enc_attns
+
+        # 通过解码器层 [batch_size, seq_len, embedding_dim]
+        for layer in self.layers:
+            dec_outputs, dec_self_attn, dec_enc_attn = layer(dec_outputs, enc_outputs, dec_self_attn_mask, dec_enc_attn_mask)
+            dec_self_attns.append(dec_self_attn)
+            dec_enc_attns.append(dec_enc_attn)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_self_attns 是一个列表，每个元素的维度是 [batch_size, n_headers, target_len, target_len]
+        # dec_enc_attns 是一个列表，每个元素的维度是 [batch_size, n_headers, target_len, soyrce_len]
+        # -------------------------------------------
+
+        # 返回解码器输出，解码器自注意力和解码器-编码器注意力权重
+        return dec_outputs, dec_self_attns, dec_enc_attns
+
+# 定义Transformer模型
+class Transformer(nn.Module):
+    def __init__(self, corpus):
+        super(Transformer, self).__init__()
+        self.encoder = Encoder(corpus) # 初始化编码器实例
+        self.decoder = Decoder(corpus) # 初始化解码器实例
+        # 定义线性层投影，将解码器输出转换为目标词汇表大小的概率分布
+        self.projection = nn.Linear(d_embedding, len(corpus.tgt_vocab), bias=False)
+
+    def forward(self, enc_inputs, dec_inputs):
+        # ------------------维度信息------------------
+        # enc_inputs [batch_size, source_seq_len]
+        # dec_inputs [batch_size, target_seq_len]
+        # -------------------------------------------
+
+        # 将输入传递给编码器，并获取编码器输出和自注意力权重
+        enc_outputs, enc_self_attns = self.encoder(enc_inputs)
+
+        # ------------------维度信息------------------
+        # enc_outputs [batch_size, source_len, embedding_dim]
+        # enc_self_attns 是一个列表，每个元素的维度 [batch_size, n_headers, src_seq_len, src_seq_len]
+        # -------------------------------------------
+
+        # 将编码器输出、解码器输入和编码器输入传递给解码器
+        # 获取解码器输出、解码器自注意力权重和编码器-解码器注意力权重
+        dec_outputs, dec_self_attns, dec_enc_attns = self.decoder(dec_inputs, enc_inputs, enc_outputs)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_self_attns 是一个列表，其中每个元素为 [batch_size, n_headers, tgt_seq_len, src_seq_dec]
+        # dec_enc_attns 是一个列表，其中每个元素为 [batch_size, n_headers, tgt_seq_len, src_seq_dec]
+        # -------------------------------------------
+
+        # 将解码器输出传递给投影层，生成目标词汇表大小的概率分布
+        dec_logits = self.projection(dec_outputs)
+
+        # ------------------维度信息------------------
+        # dec_logits [batch_size, tgt_seq_len, tgt_vocab_size]
+        # -------------------------------------------
+
+        # 返回预测值，编码器自注意力权重，解码器自注意力权重，解码器-编码器注意力权重， 解码器-编码器注意力权重
+        return dec_logits, enc_self_attns, dec_self_attns, dec_enc_attns
+
+sentences = [
+    ['咖哥 喜欢 小冰', 'KaGe likes XiaoBing'],
+    ['我 爱 学习 人工智能', 'I love studying AI'],
+    ['深度学习 改变 世界', 'DL changed the world'],
+    ['自然语言处理 很 强大', 'NLP is powerful'],
+    ['神经网络 非常 复杂', 'Neural-networkd are complex']
+]
+
+from collections import Counter # 导入Counter类
+
+# 定义 TranslationCorpus 类， 用于读入中英翻译语料，并生成字典和模型可以读取的数据批次
+class TranslationCorpus:
+    def __init__(self, sentences):
+        self.sentences = sentences
+        # 计算源语言和目标语言的最大句子长度，并分别加1和2以容纳填充符号和特殊符号
+        self.src_len = max(len(sentence[0].split()) for sentence in sentences) + 1
+        self.tgt_len = max(len(sentence[1].split()) for sentence in sentences) + 2
+        # 创建源语言和目标语言词汇表
+        self.src_vocab, self.tgt_vocab = self.create_vocabularies()
+        # 创建索引到单词的映射
+        self.src_idx2word = {v: k for k, v in self.src_vocab.items()}
+        self.tgt_idx2word = {v: k for k, v in self.tgt_vocab.items()}
+
+    # 定义创建词汇表的函数
+    def create_vocabularies(self):
+        # 统计源语言和目标语言的单词频率
+        src_counter = Counter(word for sentence in self.sentences for word in sentence[0].split())
+        tgt_counter = Counter(word for sentence in self.sentences for word in sentence[1].split())
+        # 创建源语言和目标语言的词汇表，并为每个单词分配一个唯一的索引
+        src_vocab = {'<pad>':0, **{word: i+1 for i, word in enumerate(src_counter)}}
+        tgt_vocab = {'<pad>': 0, '<sos>': 1, '<eos>': 2, **{word: i+3 for i, word in enumerate(tgt_counter)}}
+        return src_vocab, tgt_vocab
+
+    # 定义创建批次数据的函数
+    def make_batch(self, batch_size, test_batch=False):
+        input_batch, out_batch, target_batch = [], [], []
+        # 随机选择句子索引
+        sentence_indices = torch.randperm(len(self.sentences))[:batch_size]
+        for index in sentence_indices:
+            src_sentence, tgt_sentence = self.sentences[index]
+            # 将源语言和目标语言的句子转换为索引序列
+            src_seq = [self.src_vocab[word] for word in src_sentence.split()]
+            tgt_seq = [self.tgt_vocab['<sos>']] + [self.tgt_vocab[word] for word in tgt_sentence.split()] + [self.tgt_vocab['<eos>']]
+            # 对源语言和目标语言的序列进行填充
+            src_seq += [self.src_vocab['<pad>']]*(self.src_len - len(src_seq))
+            tgt_seq += [self.tgt_vocab['<pad>']]*(self.tgt_len - len(tgt_seq))
+            # 将处理好的序列添加到批次中
+            input_batch.append(src_seq)
+            out_batch.append([self.tgt_vocab['<sos>']] + ([self.tgt_vocab['<pad>']]*(self.tgt_len - 2)) if test_batch else tgt_seq[:-1])
+            target_batch.append(tgt_seq[1:])
+        # 将批次转换为LongTensor 类型
+        input_batch = torch.LongTensor(input_batch)
+        out_batch = torch.LongTensor(out_batch)
+        target_batch = torch.LongTensor(target_batch)
+        return input_batch, out_batch, target_batch
+
+# 创建语料库
+corpus = TranslationCorpus(sentences)
+
+# 训练Transformer模型
+import torch.optim as optim # 导入优化器
+model = Transformer(corpus) # 创建模型实例
+criterion = nn.CrossEntropyLoss() # 损失函数
+optimizer = optim.Adam(model.parameters(), lr=0.0001) # 优化器
+epochs = 100 # 训练轮次
+
+for epoch in range(epochs): # 训练100轮
+    optimizer.zero_grad() # 梯度清零
+    enc_inputs, dec_inputs, target_batch = corpus.make_batch(batch_size) # 创建训练数据
+    outputs, _, _, _ = model(enc_inputs, dec_inputs) # 获取模型输出
+    loss = criterion(outputs.view(-1, len(corpus.tgt_vocab)), target_batch.view(-1)) # 计算损失
+    if (epoch + 1) % 20 == 0: # 打印损失
+        print(f"Epoch: {epoch+1:04d} cost = {loss:6f}")
+    loss.backward() # 反向传播
+    optimizer.step() # 更新参数
+
+# 测试Transformer模型
+# 创建一个大小为1的批次，目标语言序列dec_inputs在测试阶段，仅包含句子开始符号<sos>
+enc_inputs, dec_inputs, target_batch = corpus.make_batch(batch_size=1, test_batch=True)
+
+predict, enc_self_attns, dec_self_attns, dec_enc_attns = model(enc_inputs, dec_inputs) # 用模型进行翻译
+predict = predict.view(-1, len(corpus.tgt_vocab)) # 将预测结果维度重塑
+predict = predict.data.max(1, keepdim=True)[1] # 找到每个位置概率最大的单词的索引
+# 解码预测的输出, 将所预测的目标句子中的索引转换为单词
+translated_sentence = [corpus.tgt_idx2word[idx.item()] for idx in predict.squeeze()]
+# 将输入的源语言句子中的索引转换为单词
+input_sentence = ''.join([corpus.src_idx2word[idx.item()] for idx in enc_inputs[0]])
+print(input_sentence, '->', translated_sentence) # 打印原始句子和翻译后的句子

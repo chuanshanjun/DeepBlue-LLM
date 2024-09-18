@@ -30,7 +30,7 @@ class ScaledDotProductAttention(nn.Module):
         # attn_mask [batch_size, n_headers, len_q, len_k] 形状和scores相同
         # -------------------------------------------
 
-        scores.masked_fill(attn_mask, -1e9)
+        scores.masked_fill_(attn_mask, -1e9)
 
         # 用softmax函数对注意力分数进行归一化
         weights = nn.Softmax(dim=-1)(scores)
@@ -72,6 +72,7 @@ class MultiHeadAttention(nn.Module):
         residual, batch_size = Q, Q.size(0) # 保留残差连接
 
         # 将输入进行线性变换和重塑，以便后续处理
+        # 自注：-1表示这个维度自动推断，其实q_s 就是 len_q
         q_s = self.W_Q(Q).view(batch_size, -1, n_headers, d_k).transpose(1,2)
         k_s = self.W_K(K).view(batch_size, -1, n_headers, d_k).transpose(1,2)
         v_s = self.W_V(V).view(batch_size, -1, n_headers, d_v).transpose(1,2)
@@ -80,7 +81,11 @@ class MultiHeadAttention(nn.Module):
         # q_s k_s v_s: [batch_size, n_headers, len_q/k/v, d_q=k/v]
         # -------------------------------------------
 
+        # 自注：原 attn_mask 维度 [batch_size, len_q, len_k]
         # 将注意力掩码复制到多头 attn_mask:[batch_size, n_headers, len_q, len_k]
+        # unsqueeze(1) 在 1 的位置增加一个维度
+        # repeat(1, n_headers, 1, 1) 沿着各个维度重复张量 1 代表维度不变，n_headers：第二个维度重复 n_headers 次
+        # 结果 张量的形状从 [batch_size, 1, seq_len, seq_len] 变为 [batch_size, n_headers, seq_len, seq_len]
         attn_mask = attn_mask.unsqueeze(1).repeat(1, n_headers, 1, 1)
 
         # ------------------维度信息------------------
@@ -117,6 +122,7 @@ class MultiHeadAttention(nn.Module):
 
         return output, weights # 返回层归一化的输出和注意力权重
 
+# Pytorch 输入为3D的时候，它默认在最后一个维度做计算
 # 定义逐位置前馈网络
 class PoswiseFeedForwardNet(nn.Module):
     def __init__(self, d_ff=2048):
@@ -197,6 +203,7 @@ def get_attn_pad_mask(seq_q, seq_k):
     batch_size, len_k = seq_k.size()
 
     # 生成布尔类型张量
+    # seq_k.data.eq(0) -> [false,false,false,true,true] 因为我们索引0为 <pad>
     pad_attn_mask = seq_k.data.eq(0).unsqueeze(1) # <PAD> token 的编码值为0
 
     # ------------------维度信息------------------
@@ -251,6 +258,7 @@ class Encoder(nn.Module):
     def __init__(self, corpus):
         super(Encoder, self).__init__()
         self.src_emb = nn.Embedding(len(corpus.src_vocab), d_embedding) # 词嵌入层
+        # 自注：corpus.src_len+1的原因为，在计算正弦位置编码表的时候，第[0,:] 维数据全为0
         self.pos_emb = nn.Embedding.from_pretrained(get_sin_enc_table(corpus.src_len+1, d_embedding), freeze=True) # 位置嵌入层
         self.layers = nn.ModuleList(EncoderLayer() for _ in range(n_layers)) # 编码器层数
 
@@ -259,7 +267,11 @@ class Encoder(nn.Module):
         # enc_input [batch_size, source_len]
         # -------------------------------------------
 
-        # 创建一个1到source_len的位置索引序列
+        # 创建一个1到source_len的位置索引序列（因为通常位置索引从 1 开始，）
+        # 自注：batch_size = size(0), src_seq_len;
+        # 如果 src_seq_len = 5, 则 torch.arange(1, 6) -> tensor([1,2,3,4,5]) -> unsqueeze(0) 在第0维度加一维,维度从torch.Size([5]) -> torch.Size([1,5])
+        # to(enc_inputs) 将张量移动到与 enc_inputs 相同的设备上
+        # to做的目的是:将生成的张量移动到相同设备上是为了确保所有相关的张量都在同一设备上进行计算，从而避免数据传输带来的开销，并确保计算的一致性和性能。这对于高效地利用硬件资源（如 GPU）进行深度学习训练和推理至关重要。
         pos_indices = torch.arange(1, enc_inputs.size(1) +1).unsqueeze(0).to(enc_inputs)
 
         # ------------------维度信息------------------
@@ -500,6 +512,11 @@ class TranslationCorpus:
         # 创建源语言和目标语言的词汇表，并为每个单词分配一个唯一的索引
         src_vocab = {'<pad>':0, **{word: i+1 for i, word in enumerate(src_counter)}}
         tgt_vocab = {'<pad>': 0, '<sos>': 1, '<eos>': 2, **{word: i+3 for i, word in enumerate(tgt_counter)}}
+
+        # 自注： 如果要实现 src_idx2word 那么直接使用下面两行代码即可
+        # src_vocab2 = {0: '<pad>', **{i+1: word for i, word in enumerate(src_counter)}}
+        # tgt_vocab2 = {0: '<pad>', 1: '<sos>', 2: '<eos>', **{i+3: word for i, word in enumerate(tgt_counter)}}
+
         return src_vocab, tgt_vocab
 
     # 定义创建批次数据的函数
@@ -515,8 +532,18 @@ class TranslationCorpus:
             # 对源语言和目标语言的序列进行填充
             src_seq += [self.src_vocab['<pad>']]*(self.src_len - len(src_seq))
             tgt_seq += [self.tgt_vocab['<pad>']]*(self.tgt_len - len(tgt_seq))
+
+            # 自注: 不够长度才填充 <pad>,例如当tgt_seq长度够的时候就是  ['<sos>', 'DL', 'changed', 'the', 'world', '<eos>']
+            # 自注: src_seq = ['咖哥'， '喜欢'， '小冰', '<pad>', '<pad>']
+            # tgt_seq = ['<sos>', 'KaGe', 'likes', 'XiaoBing', '<eos>', '<pad>']
+
             # 将处理好的序列添加到批次中
             input_batch.append(src_seq)
+
+            # 自注：如果是测试模式则 output 为 ['<sos>', '<pad>', '<pad>', '<pad>', '<pad>>']
+            # 如果是训练模式则 output 为 = ['<sos>', 'KaGe', 'likes', 'XiaoBing', '<eos>']
+            # ['<sos>', 'DL', 'changed', 'the', 'world'] 确保 <sos> 开头
+            # ['DL', 'changed', 'the', 'world', '<eos>'] 确保 <eos> 结尾
             out_batch.append([self.tgt_vocab['<sos>']] + ([self.tgt_vocab['<pad>']]*(self.tgt_len - 2)) if test_batch else tgt_seq[:-1])
             target_batch.append(tgt_seq[1:])
         # 将批次转换为LongTensor 类型

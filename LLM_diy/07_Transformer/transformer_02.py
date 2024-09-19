@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 from tensorflow import resource
 
+from Transformer_Model import n_layers
+
 d_k = 64
 d_v = 64
 
@@ -15,6 +17,7 @@ class ScaledDotProductAttention(nn.Module):
         scores = torch.matmul(Q, K.transpose(-1, -2))/np.sqrt(d_k)
 
         # 使用注意力掩码，将attn_mask中值为1的位置权重替换为极小值
+        # 自注：对attn_mask中为True的位置，对应的scores中的元素会被设置为-1e9
         scores.masked_fill_(attn_mask, -1e9)
 
         # 使用softmax函数对注意力分数进行归一化
@@ -127,8 +130,8 @@ def get_sin_enc_table(n_position, embedding_dim):
 # 定义填充注意力掩码函数
 def get_attn_pad_mask(seq_q, seq_k):
 
-    # seq_q 维度 [batch_size, seq_q]
-    # seq_k 维度 [batch_size, seq_k]
+    # seq_q 维度 [batch_size, len_q]
+    # seq_k 维度 [batch_size, len_k]
 
     batch_size, len_q = seq_q.size()
     batch_size, len_k = seq_k.size()
@@ -136,3 +139,59 @@ def get_attn_pad_mask(seq_q, seq_k):
     # 生成布尔类型的张量
     # 自注: pad索引为0的地方填充
     pad_attn_mask = seq_k.data.eq(0).unsqueeze(1) # <PAD>token的编码值为0
+    # pad_attn_mask 维度 [batch_size, 1, len_k]
+
+    # 变形为与注意力分数相同形状的张量
+    # 自注：expand 扩展操作仅复制已有的数据，不会引入新的信息
+    pad_attn_mask = pad_attn_mask.expand(batch_size, len_q, len_k)
+    # pad_attn_mask 维度 [batch_size, len_q, len_k]
+
+    return pad_attn_mask # 返回填充位置的注意力掩码
+
+# 定义编码器层类
+class EncoderLayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.enc_self_attn = MultiHeadAttention() # 多头自注意力层
+        self.pos_ffn = PoswiseFeedForwardNet() # 逐位置前馈网络层
+
+    def forward(self, enc_inputs, enc_self_attn_mask):
+        # 将相同的Q, K, V 输入多头自注意力层，返回attn_weights 增加了头数
+        enc_outpus, attn_weight = self.enc_self_attn(enc_inputs, enc_inputs, enc_inputs, enc_self_attn_mask)
+
+        # 将多头自注意力outputs输入逐位置前馈网络层
+        enc_outpus = self.pos_ffn(enc_outpus)
+
+        return enc_outpus, attn_weight # 返回编码器输出和每层编码器的注意力权重
+
+n_layers = 6 # 设置Encoder的层数
+# 定义编码器类
+class Encoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.src_emb = nn.Embedding(len(corpus.src_vocab), d_embedding) # 词嵌入层
+        self.pop_emb = nn.Embedding.from_pretrained(get_sin_enc_table(corpus.src_len+1, d_embedding), freeze=True) # 位置嵌入层
+        self.layers = nn.ModuleList([EncoderLayer() for _ in range(n_layers)]) # 编码器层数
+
+    def forward(self, enc_inputs):
+        # enc_inputs的维度: [natch_size, source_len]
+        # 创建一个从1到source_len的位置索引序列
+        # 自注：这里+1是因为在位置编码中，0位置被保留为填充位置，所以从1开始 - 这段解释是模型生成的
+        # 自注：又arange(1,6)方法生成的张量不包含6，所以这边还要再加1位
+        pos_indices = torch.arange(1, enc_inputs.size(1) + 1).unsqueeze(0).to(enc_inputs)
+        # pos_indices 维度 [1, source_len]
+
+        # 对输入进行词嵌入和位置嵌入相加 [batch_size, source_len, embedding_dim]
+        enc_outputs = self.src_emb(enc_inputs) + self.pop_emb(pos_indices)
+
+        # 生成自注意力掩码
+        enc_self_attn_mask = get_attn_pad_mask(enc_inputs, enc_inputs)
+
+        enc_self_attn_weigths = []
+
+        # 通过编码器层[batch_size, seq_len, embedding_dim]
+        for layer in self.layers:
+            enc_outputs, enc_self_attn_weigth = layer(enc_outputs, enc_self_attn_mask)
+            enc_self_attn_weigths.append(enc_self_attn_weigth)
+
+        return enc_outputs, enc_self_attn_weigths # 返回编码器输出和注意力权重

@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from tensorflow import resource
 
 d_k = 64
 d_v = 64
@@ -55,6 +56,7 @@ class MultiHeadAttention(nn.Module):
         attn_mask = attn_mask.unsqueeze(1).repeat(1, n_headers, 1, 1)
 
         # 使用缩放点积注意力计算上下文和注意力权重
+        # 自注：此处的ScaledDotProductAttention是实例化出来的
         context, weight = ScaledDotProductAttention()(q_s, k_s, v_s, attn_mask)
 
         # 通过调整维度将多个头的上下文向量连接在一起
@@ -71,3 +73,66 @@ class MultiHeadAttention(nn.Module):
 
         # 返回层归一化的输出和注意力权重
         return output, weight
+
+# 定义逐位置前馈网络
+class PoswiseFeedForwardNet(nn.Module):
+    def __init__(self, d_ff=2048):
+        super().__init__()
+        # 定义一维卷积层1，用于将输入映射到更高维度
+        self.conv1 = nn.Conv1d(in_channels=d_embedding, out_channels=d_ff, kernel_size=1)
+        # 定义一维卷积层2，用于将输入映射回原始维度
+        self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_embedding, kernel_size=1)
+        # 定义层归一化
+        self.layer_norm = nn.LayerNorm(d_embedding)
+
+    def forward(self, inputs):
+        # 保留残差连接
+        residual = inputs
+
+        # 在卷积层1后使用Relu函数
+        # 自注：这边的转置后inputs 的维度 [batch_size, embedding_dim, len_q]
+        # 网络沿着len_q的维度对每个token(d_embedding)做卷积(这边就是全连接了)
+        output = nn.ReLU()(self.conv1(inputs.transpose(1,2)))
+
+        # 维度 [batch_size, d_ff, len_q]
+        # 使用卷积层2进行降维,再将维度
+        output = self.conv2(output).transpose(1,2)
+        # 维度 [batch_size, len_q, embedding_dim]
+
+        # 与输入进行残差连接，并进行层归一化
+        self.layer_norm(output, residual)
+
+        # 返回加入残差连接后的层归一化的结果
+        return output
+
+# 自注：目的是为了在不同位置和维度之间产生独特的角度值，以便在生成位置嵌入向量时
+# 捕获不同序列中不同位置的信息
+# 生成正弦位置编码表的函数，用于在Transformer中引入位置信息
+def get_sin_enc_table(n_position, embedding_dim):
+    # n_position：输入序列的最大长度，范围[0, max_seq_len -1]
+    # 根据位置和维度信息，初始化正弦位置编码表
+    sinusoid_table = np.zeros((n_position, embedding_dim))
+    # 遍历所有位置和维度，计算角度值
+    for pos_i in range(n_position):
+        for hid_j in range(embedding_dim):
+            angle = pos_i / np.power(10000, 2*(hid_j // 2)/embedding_dim)
+            sinusoid_table[pos_i, hid_j] = angle
+
+    # 计算正弦和余弦值
+    sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2]) # dim 2i 偶数维度
+    sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2]) # dim 2i+1 奇数维度
+
+    return torch.FloatTensor(sinusoid_table) # 返回正弦位置编码表
+
+# 定义填充注意力掩码函数
+def get_attn_pad_mask(seq_q, seq_k):
+
+    # seq_q 维度 [batch_size, seq_q]
+    # seq_k 维度 [batch_size, seq_k]
+
+    batch_size, len_q = seq_q.size()
+    batch_size, len_k = seq_k.size()
+
+    # 生成布尔类型的张量
+    # 自注: pad索引为0的地方填充
+    pad_attn_mask = seq_k.data.eq(0).unsqueeze(1) # <PAD>token的编码值为0

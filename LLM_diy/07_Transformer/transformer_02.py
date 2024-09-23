@@ -195,3 +195,111 @@ class Encoder(nn.Module):
             enc_self_attn_weigths.append(enc_self_attn_weigth)
 
         return enc_outputs, enc_self_attn_weigths # 返回编码器输出和注意力权重
+
+
+# 生成后续注意力掩码的函数，用于在多头注意力计算中忽略未来信息
+def get_attn_subsequent_mask(seq):
+    # ------------------维度信息------------------
+    # seq 的维度: [batch_size, seq_len(Q), seq_len(K)] ，形状与多头自注意力中的注意力权重矩阵相匹配
+    # -------------------------------------------
+
+    # 获取输入序列的形状
+    attn_shape = [seq.size(0), seq.size(1), seq.size(1)]
+
+    # ------------------维度信息------------------
+    # attn_shape 是一个一维张量 [batch_size, seq_len(Q), seq_len(K)]
+    # -------------------------------------------
+
+    # 使用numpy创建一个上三角矩阵 (triu = triangle upper)
+    subsequent_mask = np.triu(np.ones(attn_shape), k=1)
+
+    # ------------------维度信息------------------
+    # subsequent_mask 的维度: [batch_size, seq_len(Q), seq_len(K)]
+    # -------------------------------------------
+
+    # 将numpy数组转换为PyTorch张量，并将数据类型设置为byte(布尔值)
+    subsequent_mask = torch.from_numpy(subsequent_mask).byte()
+
+    # ------------------维度信息------------------
+    # 返回的subsequent_mask 的维度： [batch_size, seq_len(Q), seq_len(K)]
+    # -------------------------------------------
+
+    return subsequent_mask # 返回后续位置的注意力掩码
+
+# 定义解码器层
+class DecoderLayer(nn.Module):
+    def __init__(self):
+        super(DecoderLayer, self).__init__()
+        self.dec_self_attn = MultiHeadAttention() # 多头自注意力层
+        self.dec_enc_attn = MultiHeadAttention() # 多头自注意力层，连接编码器和解码器
+        self.pos_ffn = PoswiseFeedForwardNet() # 逐位置前馈网络层
+
+    def forward(self, dec_inputs, enc_outputs, dec_self_attn_mask, dec_enc_attn_mask):
+        # ------------------维度信息------------------
+        # dec_inputs [batch_size, target_len, embedding_dim]
+        # enc_outputs [batch_size, source_len, embedding_dim]
+        # dec_self_attn_mask [batch_size, target_len, target_len]
+        # dec_enc_attn_mask [batch_size, target_len, source_len]
+        # -------------------------------------------
+
+        # 将相同的 Q K V 输入多头自注意力层
+        dec_outputs, dec_self_attn = self.dec_self_attn(dec_inputs, dec_inputs, dec_inputs, dec_self_attn_mask)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_self_attn_mask [batch_size, n_headers, target_len, target_len]
+        # -------------------------------------------
+
+        # 将解码器输出和编码器输出输入多头自注意力层
+        dec_outputs, dec_enc_attn = self.dec_enc_attn(dec_outputs, enc_outputs, enc_outputs, dec_enc_attn_mask)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_enc_attn_mask [batch_size, n_headers, target_len, source_len]
+        # -------------------------------------------
+
+        # 输入逐位置前馈网络层
+        dec_outputs = self.pos_ffn(dec_outputs)
+
+        # ------------------维度信息------------------
+        # dec_outputs [batch_size, target_len, embedding_dim]
+        # dec_self_attn [batch_size, n_headers, target_len, target_len]
+        # dec_enc_attn [batch_size, n_headers, target_len, source_len]
+        # -------------------------------------------
+
+        # 返回解码器层输出，每层的自注意力和解码器-编码器注意力权重
+
+        return dec_outputs, dec_self_attn, dec_enc_attn
+
+# 定义解码器类
+n_layers = 6 # 设置Decoder的层数
+class Decoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.tgt_emb = nn.Embedding(len(corpus.tgt_vocab), d_embedding) # 词嵌入层
+        self.pos_emb = nn.Embedding.from_pretrained(get_sin_enc_table(corpus.tgt_len+1, d_embedding), freeze=True) # 位置嵌入层
+        self.layers = nn.ModuleList([DecoderLayer() for _ in range(n_layers)])
+
+    def forward(self, dec_inputs, enc_inputs, enc_outputs):
+        # 创建一个从1到source_len的位置索引序列
+        pos_indices = torch.arange(1, dec_inputs.size(1) + 1).unsqueeze(0).to(dec_inputs)
+
+        # pos_indices 维度 [1, target_len] , arange中的因为后面是开区间，所以 dec_inputs.size(1) 需要加1
+
+        # 对输入进行词嵌入和位置嵌入
+        dec_outputs = self.tgt_emb(dec_inputs) + self.pos_emb(pos_indices)
+
+        # 生成解码器自注意力掩码和解码器-编码器注意力掩码
+        dec_self_attn_pad_mask = get_attn_pad_mask(dec_inputs, dec_inputs) # 填充掩码
+        dec_self_attn_subsequent_mask = get_attn_subsequent_mask(dec_inputs) # 后续掩码
+        dec_self_attn_mask = torch.gt((dec_self_attn_pad_mask + dec_self_attn_subsequent_mask), 0)
+        dec_enc_attn_mask = get_attn_pad_mask(dec_inputs, enc_inputs) # 解码器-编码器掩码
+
+        dec_self_attns, dec_enc_attns = [], [] # 初始化
+        # 通过解码器层 [batch_size, seq_len, embedding_dim]
+        for layer in self.layers:
+            dec_outputs, dec_self_attn, dec_enc_attn = layer(dec_outputs, enc_outputs, dec_self_attn_mask, dec_enc_attn_mask)
+            dec_self_attns.append(dec_self_attn)
+            dec_enc_attns.append(dec_enc_attn)
+
+        return dec_outputs, dec_self_attns, dec_enc_attns

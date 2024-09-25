@@ -61,7 +61,7 @@ class MultiHeadAttention(nn.Module):
         context, weight = ScaledDotProductAttention()(q_s, k_s, v_s, attn_mask)
 
         # 通过调整维度将多个头的上下文向量连接在一起
-        context.trnaspose(1, 2).contiguous().view(batch_size, -1, n_headers * d_v)
+        context = context.transpose(1, 2).contiguous().view(batch_size, -1, n_headers * d_v)
 
         # 用一个线性层把连接后的多头自注意力结果转换为原始的嵌入维度
         # 自注：这么做的一个可能的原因是，我的context的维度是dim_v与dim_q不同，所以可能要转回去?
@@ -101,7 +101,7 @@ class PoswiseFeedForwardNet(nn.Module):
         # 维度 [batch_size, len_q, embedding_dim]
 
         # 与输入进行残差连接，并进行层归一化
-        self.layer_norm(output, residual)
+        output = self.layer_norm(output + residual)
 
         # 返回加入残差连接后的层归一化的结果
         return output

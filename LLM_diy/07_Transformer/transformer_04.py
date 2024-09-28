@@ -299,5 +299,28 @@ for epoch in range(epochs): # 训练epochs 轮
     loss.backward() # 反向传播
     optimizer.step() # 更新参数
 
+# 测试文本生成
+def generate_text(model, input_str, max_len=50):
+    model.eval() # 将模型设置为评估(测试)模式，关闭dropout和batch normalization 等训练相关的层
+    # 将输入字符串中的每个token转换为其在词汇表中的索引
+    input_tokens = [corpus.vocab[token] for token in input_str]
+    # 创建一个新列表，将输入的tokens复制到输出token中，目前只有输入的词
+    output_tokens = input_tokens.copy()
+    with torch.no_grad(): # 禁用梯度计算，以节省内存并加速测试过程
+        for _ in range(max_len): # 生成最多 max_len 个 tokens
+            # 将输出的token转换为Pytorch张量，并增加一个代表批次的维度 [1, len(output_tokens)]
+            inputs = torch.LongTensor(output_tokens).unsqueeze(0).to(device)
+            outputs = model(inputs) # 输出 logits 形状为 [1, len(output_tokens), vocab_size]
+            # 在最后一个维度上获取logits中的最大值，并返回其索引(即下一个token)
+            _, next_token = torch.max(outputs[:, -1, :], dim= -1)
+            next_token = next_token.item() # 将张量转换为Python整数
+            if next_token == corpus.vocab['<eos>']: # 如果下一个token是结束符，则停止生成
+                break # 如果生成的token 是EOS（结束符），则停止生成过程
+            output_tokens.append(next_token) # 将生成的tokens添加到output_tokens 列表
+    # 将输出tokens转换回文本字符串
+    output_str = " ".join([corpus.idx2word[token] for token in output_tokens])
+    return output_str
 
-
+input_str = ['Python'] # 输入一个词: Python
+generated_text = generate_text(model, input_str) # 模型根据这个词生成后续文本
+print('生成的文本: ', generated_text) # 打印预测文本

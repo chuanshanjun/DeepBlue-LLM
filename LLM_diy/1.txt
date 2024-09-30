@@ -1,0 +1,37 @@
+input_batch:
+tensor([[6, 3],
+        [6, 4]])
+
+embedding 操作
+对 self.C(torch.tensor([6]))
+tensor([[0.5092, 1.1251]])
+
+对 self.C(torch.tensor([3]))
+tensor([[-1.6873, -0.8393]])
+
+对 tensor([[6,3]])) 进行embedding操作
+
+
+tensor([[[ 0.5092],
+         [-1.6873]],
+
+        [[ 1.1251],
+         [-0.8393]]], grad_fn=<PermuteBackward0>)
+
+对 tensor([[6, 3],
+        [6, 4]])
+进行embedding 操作
+tensor([[[ 0.5092,  1.1251],
+         [-1.6873, -0.8393]],
+
+        [[ 0.5092,  1.1251],
+         [ 0.1891, -0.2173]]], grad_fn=<EmbeddingBackward0>)
+
+
+X[0] -> batch 1
+tensor([[ 0.5092,  1.1251],
+        [-1.6873, -0.8393]])
+
+x[1] -> batch 2
+tensor([[ 0.5092,  1.1251],
+        [ 0.1891, -0.2173]])

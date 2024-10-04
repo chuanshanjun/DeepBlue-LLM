@@ -275,7 +275,7 @@ with open('./data/lang.txt', 'r') as file: # 从文件中读入语料
 corpus = LanguageCorpus(senetences) # 创建语料库
 vocab_size = len(corpus.vocab) # 词汇表大小
 max_seq_len = corpus.seq_len # 最大句子长度（用于位置编码）
-print(f'预料库词汇表大小: {vocab_size}') # 打印词汇表大小
+print(f'语料库词汇表大小: {vocab_size}') # 打印词汇表大小
 print(f'最长句子长度: {max_seq_len}') # 打印最大序列长度
 
 def idx2word(corpus, batch, seq):

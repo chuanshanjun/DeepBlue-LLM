@@ -99,6 +99,7 @@ chat_dataloader = DataLoader(chat_dataset, batch_size=batch_size, shuffle=True, 
 # 第2步 微调Wiki-GPT
 from GPT_Model import GPT # 导入GPT模型的类(这是我们自己制作的)
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # 确定设备(CPU 或 GPU)
+print(device)
 model = GPT(28785, 256, n_layers=6) # 创建模型示例
 model.load_state_dict(torch.load('best_model.pt')) # 加载模型
 

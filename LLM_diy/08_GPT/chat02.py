@@ -1,15 +1,20 @@
-from weakref import finalize
-
 import torch # 导入 torch
-from requests.packages import target
 from transformers import GPT2Tokenizer # 导入GPT-2分词器
 from transformers import GPT2LMHeadModel # 导入 GPT-2语言模型
 model_name = 'gpt2' # 也可以选择其他模型，如'gpt2-medium' 'gpt2-large' 等
-tokenizer = GPT2Tokenizer.from_pretrained(model_name) # 加载分词器
+cache_dir = '../../venv/cache'
+tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir) # 加载分词器
+
+print('load tokenizer from GPT2Tokenizer')
+
 tokenizer.pad_token = '<pad>' # 为分词器添加 pad token
 tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids('<pad>')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = GPT2LMHeadModel.from_pretrained(model_name).to(device) # 将模型加载到设备上(CPU或GPU)
+print(device)
+model = GPT2LMHeadModel.from_pretrained(model_name, cache_dir=cache_dir).to(device) # 将模型加载到设备上(CPU或GPU)
+
+print('load tools from GPT2LMHeadModel')
+
 vocab = tokenizer.get_vocab() # 获取词汇表
 print('模型信息: ', model)
 print('分词信息: ', tokenizer)

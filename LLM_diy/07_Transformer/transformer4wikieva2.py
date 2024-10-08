@@ -1,11 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from fsspec.core import OpenFile
-from keras.backend import dtype
-from torch.fx.experimental.unification.multipledispatch.dispatcher import source
-
-from Transformer_Model import device
 
 d_k = 64
 d_v = 64
@@ -342,6 +337,7 @@ valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size,
 # 使用DataLoader提供的数据进行训练
 import torch.optim as optim # 导入优化器
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # 设置设备
+print(device)
 model = GPT(len(vocab), max_seq_len).to(device) # 创建GPT模型实例
 criterion = nn.CrossEntropyLoss(ignore_index=vocab['<pad>'])
 optimizer = optim.Adam(model.parameters(), lr=0.0001) # 优化器
